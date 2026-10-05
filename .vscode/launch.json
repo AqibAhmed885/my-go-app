@@ -1,0 +1,28 @@
+cat << 'EOF' > .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug cmd/api (Standard Layout)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/api"
+    },
+    {
+      "name": "Launch Current File",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${file}"
+    },
+    {
+      "name": "Debug Test (Current File)",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${file}"
+    }
+  ]
+}
+EOF
