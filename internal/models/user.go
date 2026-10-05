@@ -19,12 +19,12 @@ var (
 )
 
 type User struct {
-	ID           int       `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name         string    `json:"name" gorm:"type:text;not null"`
-	Email        string    `json:"email" gorm:"type:text;not null;uniqueIndex"`
-	PasswordHash string    `json:"-" gorm:"column:password_hash;type:text;not null;default:''"`
-	CreatedAt    time.Time `json:"created_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt    time.Time `json:"updated_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
+	ID           int       `json:"id" example:"1" gorm:"primaryKey;autoIncrement"`
+	Name         string    `json:"name" example:"Aqib Ahmed" gorm:"type:text;not null"`
+	Email        string    `json:"email" example:"aqib@example.com" gorm:"type:text;not null;uniqueIndex"`
+	PasswordHash string    `json:"-" example:"$2a$10$..." gorm:"column:password_hash;type:text;not null;default:''"`
+	CreatedAt    time.Time `json:"created_at" example:"2025-01-01T00:00:00Z" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt    time.Time `json:"updated_at" example:"2025-01-01T00:00:00Z" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type UserModel struct {

@@ -22,9 +22,39 @@ type UserHandler struct {
 	JWTSecret string
 }
 
+// RegisterRequest is the payload accepted when creating an account.
+type RegisterRequest struct {
+	Name     string `json:"name" example:"Aqib Ahmed"`
+	Email    string `json:"email" example:"aqib@example.com"`
+	Password string `json:"password" example:"secret123"`
+}
+
+// LoginRequest is the payload accepted when authenticating a user.
+type LoginRequest struct {
+	Email    string `json:"email" example:"aqib@example.com"`
+	Password string `json:"password" example:"secret123"`
+}
+
+// AuthResponse contains a JWT and the authenticated user's public profile.
+type AuthResponse struct {
+	Token string      `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	User  models.User `json:"user"`
+}
+
+// UserListResponse is the paginated response returned by GET /users.
 type UserListResponse struct {
 	Data []models.User  `json:"data"`
 	Meta map[string]any `json:"meta"`
+}
+
+// MessageResponse is returned for successful operations with a message only.
+type MessageResponse struct {
+	Message string `json:"message" example:"deleted successfully"`
+}
+
+// ErrorResponse is returned when an API request fails.
+type ErrorResponse struct {
+	Error string `json:"error" example:"invalid request body"`
 }
 
 func (h *UserHandler) invalidateUserCache(r *http.Request) {
@@ -47,7 +77,8 @@ func (h *UserHandler) invalidateUserCache(r *http.Request) {
 // @Param        page    query     int     false  "Page number (default 1)"
 // @Param        limit   query     int     false  "Page size (default 10)"
 // @Param        search  query     string  false  "Search term for name or email"
-// @Success      200     {object}  map[string]any
+// @Success      200     {object}  UserListResponse
+// @Failure      500     {object}  ErrorResponse
 // @Router       /users [get]
 func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -112,11 +143,20 @@ func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// CreateUser godoc
+// @Summary      Create a user
+// @Description  Creates a user profile without a password or authentication token
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        payload body UserRequest true "User details"
+// @Success      201 {object} models.User
+// @Failure      400 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /users [post]
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
+	var input UserRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -142,6 +182,17 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, user)
 }
 
+// GetUserByID godoc
+// @Summary      Get a user
+// @Description  Returns a user by numeric ID
+// @Tags         Users
+// @Produce      json
+// @Param        id path int true "User ID" example(1)
+// @Success      200 {object} models.User
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /users/{id} [get]
 func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -161,6 +212,20 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 
+// PutUser godoc
+// @Summary      Update a user
+// @Description  Updates a user's name and email address
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "User ID" example(1)
+// @Param        payload body UserRequest true "Updated user details"
+// @Success      200 {object} models.User
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /users/{id} [put]
 func (h *UserHandler) PutUser(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -168,10 +233,7 @@ func (h *UserHandler) PutUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
+	var input UserRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -200,6 +262,20 @@ func (h *UserHandler) PutUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 
+// DeleteUser godoc
+// @Summary      Delete a user
+// @Description  Deletes a user by ID. Requires a valid bearer token and administrator privileges.
+// @Tags         Users
+// @Produce      json
+// @Param        id path int true "User ID" example(1)
+// @Security     BearerAuth
+// @Success      200 {object} MessageResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      403 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /users/{id} [delete]
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -216,7 +292,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateUserCache(r)
-	writeJSON(w, http.StatusOK, map[string]string{"message": "deleted successfully"})
+	writeJSON(w, http.StatusOK, MessageResponse{Message: "deleted successfully"})
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -235,17 +311,14 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // @Tags         Authentication
 // @Accept       json
 // @Produce      json
-// @Param        payload body object true "Registration info"
+// @Param        payload body RegisterRequest true "Registration info"
 // @Success      201  {object}  models.User
-// @Failure      400  {object}  map[string]string
-// @Failure      409  {object}  map[string]string
+// @Failure      400  {object}  ErrorResponse
+// @Failure      409  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
 // @Router       /auth/register [post]
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
+	var input RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -278,15 +351,14 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 // @Tags         Authentication
 // @Accept       json
 // @Produce      json
-// @Param        credentials body object true "User login payload"
-// @Success      200  {object}  map[string]any
-// @Failure      401  {object}  map[string]string
+// @Param        credentials body LoginRequest true "User login payload"
+// @Success      200  {object}  AuthResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
 // @Router       /auth/login [post]
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
+	var input LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -313,10 +385,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token": tokenString,
-		"user":  user,
-	})
+	writeJSON(w, http.StatusOK, AuthResponse{Token: tokenString, User: *user})
 }
 
 // GetProfile godoc
@@ -326,7 +395,8 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200  {object}  models.User
-// @Failure      401  {object}  map[string]string
+// @Failure      401  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
 // @Router       /profile [get]
 // GetProfile is protected by JWTMiddleware
 func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {

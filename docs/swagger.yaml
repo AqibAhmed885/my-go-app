@@ -1,16 +1,90 @@
 basePath: /
 definitions:
-  models.User:
+  github_com_AqibAhmed885_my-go-app_internal_models.User:
     properties:
       created_at:
+        example: "2025-01-01T00:00:00Z"
         type: string
       email:
+        example: aqib@example.com
         type: string
       id:
+        example: 1
         type: integer
       name:
+        example: Aqib Ahmed
         type: string
       updated_at:
+        example: "2025-01-01T00:00:00Z"
+        type: string
+    type: object
+  internal_handlers.AuthResponse:
+    properties:
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+      user:
+        $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
+    type: object
+  internal_handlers.ErrorResponse:
+    properties:
+      error:
+        example: invalid request body
+        type: string
+    type: object
+  internal_handlers.HealthResponse:
+    properties:
+      database:
+        example: connected
+        type: string
+      status:
+        example: UP
+        type: string
+    type: object
+  internal_handlers.LoginRequest:
+    properties:
+      email:
+        example: aqib@example.com
+        type: string
+      password:
+        example: secret123
+        type: string
+    type: object
+  internal_handlers.MessageResponse:
+    properties:
+      message:
+        example: deleted successfully
+        type: string
+    type: object
+  internal_handlers.RegisterRequest:
+    properties:
+      email:
+        example: aqib@example.com
+        type: string
+      name:
+        example: Aqib Ahmed
+        type: string
+      password:
+        example: secret123
+        type: string
+    type: object
+  internal_handlers.UserListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
+        type: array
+      meta:
+        additionalProperties: {}
+        type: object
+    type: object
+  internal_handlers.UserRequest:
+    properties:
+      email:
+        example: aqib@example.com
+        type: string
+      name:
+        example: Aqib Ahmed
         type: string
     type: object
 host: localhost:8080
@@ -32,21 +106,26 @@ paths:
         name: credentials
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/internal_handlers.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: Log in user
       tags:
       - Authentication
@@ -61,29 +140,42 @@ paths:
         name: payload
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/internal_handlers.RegisterRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.User'
+            $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: Register a new user
       tags:
       - Authentication
+  /healthz:
+    get:
+      description: Confirms that the HTTP process is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handlers.HealthResponse'
+      summary: Liveness check
+      tags:
+      - System
   /profile:
     get:
       description: Fetches user details associated with the current JWT token
@@ -93,18 +185,37 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.User'
+            $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get current profile
       tags:
       - Users
+  /readyz:
+    get:
+      description: Verifies that PostgreSQL is reachable
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handlers.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handlers.HealthResponse'
+      summary: Readiness check
+      tags:
+      - System
   /users:
     get:
       description: Get a paginated list of users with optional search
@@ -127,9 +238,162 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.UserListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: List users
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: Creates a user profile without a password or authentication token
+      parameters:
+      - description: User details
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.UserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      summary: Create a user
+      tags:
+      - Users
+  /users/{id}:
+    delete:
+      description: Deletes a user by ID. Requires a valid bearer token and administrator
+        privileges.
+      parameters:
+      - description: User ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handlers.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a user
+      tags:
+      - Users
+    get:
+      description: Returns a user by numeric ID
+      parameters:
+      - description: User ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      summary: Get a user
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: Updates a user's name and email address
+      parameters:
+      - description: User ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated user details
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.UserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_AqibAhmed885_my-go-app_internal_models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      summary: Update a user
       tags:
       - Users
 securityDefinitions:
