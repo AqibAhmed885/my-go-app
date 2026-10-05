@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 	"fmt"
+	"time"
+
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/lib/pq"
@@ -18,12 +19,12 @@ var (
 )
 
 type User struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int       `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name         string    `json:"name" gorm:"type:text;not null"`
+	Email        string    `json:"email" gorm:"type:text;not null;uniqueIndex"`
+	PasswordHash string    `json:"-" gorm:"column:password_hash;type:text;not null;default:''"`
+	CreatedAt    time.Time `json:"created_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type UserModel struct {
@@ -241,10 +242,10 @@ func (m *UserModel) Authenticate(ctx context.Context, email, password string) (*
 // 	}
 
 // 	dataQuery := fmt.Sprintf(`
-// 		SELECT id, name, email, created_at, updated_at 
-// 		FROM users 
-// 		%s 
-// 		ORDER BY id ASC 
+// 		SELECT id, name, email, created_at, updated_at
+// 		FROM users
+// 		%s
+// 		ORDER BY id ASC
 // 		LIMIT $%d OFFSET $%d`, whereClause, argID, argID+1)
 
 // 	args = append(args, f.Limit, f.Offset)
@@ -265,6 +266,3 @@ func (m *UserModel) Authenticate(ctx context.Context, email, password string) (*
 
 // 	return users, totalCount, nil
 // }
-
-
-
