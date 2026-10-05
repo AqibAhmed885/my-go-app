@@ -3,12 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/AqibAhmed885/my-go-app/internal/middleware"
 	"github.com/AqibAhmed885/my-go-app/internal/models"
@@ -16,7 +18,25 @@ import (
 
 type UserHandler struct {
 	Users     *models.UserModel
+	Redis     *redis.Client // Redis client instance
 	JWTSecret string
+}
+
+type UserListResponse struct {
+	Data []models.User  `json:"data"`
+	Meta map[string]any `json:"meta"`
+}
+
+func (h *UserHandler) invalidateUserCache(r *http.Request) {
+	if h.Redis == nil {
+		return
+	}
+
+	// Find and remove all cached user list keys
+	iter := h.Redis.Scan(r.Context(), 0, "users:*", 0).Iterator()
+	for iter.Next(r.Context()) {
+		_ = h.Redis.Del(r.Context(), iter.Val()).Err()
+	}
 }
 
 // GetUsers godoc
@@ -44,6 +64,23 @@ func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	search := query.Get("search")
 	offset := (page - 1) * limit
 
+	// Construct unique cache key per page, limit, and search term
+	cacheKey := fmt.Sprintf("users:page:%d:limit:%d:search:%s", page, limit, search)
+
+	// 1. Try reading from Redis cache
+	if h.Redis != nil {
+		cachedData, err := h.Redis.Get(r.Context(), cacheKey).Bytes()
+		if err == nil {
+			// Cache Hit: serve directly from Redis
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			w.WriteHeader(http.StatusOK)
+			w.Write(cachedData)
+			return
+		}
+	}
+
+	// 2. Cache Miss: fetch from Postgres
 	users, total, err := h.Users.List(r.Context(), models.UserFilters{
 		Search: search,
 		Limit:  limit,
@@ -54,15 +91,25 @@ func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"data": users,
-		"meta": map[string]any{
+	resp := UserListResponse{
+		Data: users,
+		Meta: map[string]any{
 			"current_page":  page,
 			"page_size":     limit,
 			"total_records": total,
 			"total_pages":   (total + limit - 1) / limit,
 		},
-	})
+	}
+
+	// 3. Store result in Redis with a 5-minute TTL
+	if h.Redis != nil {
+		if payload, err := json.Marshal(resp); err == nil {
+			_ = h.Redis.Set(r.Context(), cacheKey, payload, 5*time.Minute).Err()
+		}
+	}
+
+	w.Header().Set("X-Cache", "MISS")
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +215,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateUserCache(r)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "deleted successfully"})
 }
 
@@ -220,6 +268,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateUserCache(r)
 	writeJSON(w, http.StatusCreated, user)
 }
 
@@ -295,4 +344,3 @@ func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, user)
 }
-

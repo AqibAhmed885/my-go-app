@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: my_go_app
     ports:
       - "5432:5432"
@@ -17,6 +17,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: go_redis_cache
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: .
@@ -26,9 +38,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:postgrespassword@db:5432/my_go_app?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET: "docker-local-secret-key-12345"
     ports:
       - "8080:8080"

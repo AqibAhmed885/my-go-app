@@ -16,6 +16,7 @@ import (
 	"time"
 
 	_ "github.com/AqibAhmed885/my-go-app/docs" // <-- MUST BE PRESENT
+	"github.com/AqibAhmed885/my-go-app/internal/database"
 	"github.com/AqibAhmed885/my-go-app/internal/handlers"
 	"github.com/AqibAhmed885/my-go-app/internal/middleware"
 	"github.com/AqibAhmed885/my-go-app/internal/models"
@@ -129,8 +130,22 @@ func main() {
 		jwtSecret = "super-secret-development-key-change-in-production"
 	}
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379/0"
+	}
+
+	rdb, err := database.NewRedisClient(redisURL)
+	if err != nil {
+		log.Printf("Warning: Redis unavailable (%v). Continuing without caching.", err)
+	} else {
+		log.Println("Connected to Redis cache successfully")
+		defer rdb.Close()
+	}
+
 	userHandler := &handlers.UserHandler{
 		Users:     userModel,
+		Redis:     rdb,
 		JWTSecret: jwtSecret,
 	}
 
