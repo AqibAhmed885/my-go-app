@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,26 +25,7 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rec *responseRecorder) WriteHeader(code int) {
-	rec.statusCode = code
-	rec.ResponseWriter.WriteHeader(code)
-}
-
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rec := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		log.Printf("[%s] %s %d - %v", r.Method, r.URL.Path, rec.statusCode, time.Since(start))
-	})
-}
-
-func runMigrations(db *sql.DB, migrationsDir string) error {
+func runMigrations(db *sql.DB, migrationsDir string, logger *slog.Logger) error {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("reading migrations dir: %w", err)
@@ -69,7 +50,7 @@ func runMigrations(db *sql.DB, migrationsDir string) error {
 			return fmt.Errorf("reading file %s: %w", name, err)
 		}
 
-		log.Printf("Applying migration: %s", name)
+		logger.Info("applying migration", slog.String("migration", name))
 		if _, err := db.Exec(string(query)); err != nil {
 			return fmt.Errorf("executing migration %s: %w", name, err)
 		}
@@ -88,9 +69,14 @@ func runMigrations(db *sql.DB, migrationsDir string) error {
 // @name Authorization
 // @description Type "Bearer" followed by a space and your JWT token.
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+		logger.Warn("no .env file found, using system environment variables")
 	}
 
 	port := os.Getenv("PORT")
@@ -100,12 +86,14 @@ func main() {
 
 	dbConnStr := os.Getenv("DATABASE_URL")
 	if dbConnStr == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		logger.Error("DATABASE_URL environment variable is required")
+		os.Exit(1)
 	}
 
 	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		logger.Error("failed to open database", slog.Any("error", err))
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -114,14 +102,16 @@ func main() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping DB: %v", err)
+		logger.Error("failed to ping database", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// Apply migration file
-	if err := runMigrations(db, "migrations"); err != nil {
-		log.Fatalf("Migration failed: %v", err)
+	if err := runMigrations(db, "migrations", logger); err != nil {
+		logger.Error("migration failed", slog.Any("error", err))
+		os.Exit(1)
 	}
-	log.Println("All database migrations applied successfully")
+	logger.Info("all database migrations applied successfully")
 
 	// Wire up model and handler
 	userModel := &models.UserModel{DB: db}
@@ -137,9 +127,9 @@ func main() {
 
 	rdb, err := database.NewRedisClient(redisURL)
 	if err != nil {
-		log.Printf("Warning: Redis unavailable (%v). Continuing without caching.", err)
+		logger.Warn("redis unavailable; continuing without caching", slog.Any("error", err))
 	} else {
-		log.Println("Connected to Redis cache successfully")
+		logger.Info("connected to Redis cache successfully")
 		defer rdb.Close()
 	}
 
@@ -167,7 +157,7 @@ func main() {
 	rateLimiter := middleware.RateLimit(5, 10)
 
 	// Build the middleware pipeline: Logging -> CORS -> RateLimit -> Mux
-	pipeline := loggingMiddleware(middleware.EnableCORS(rateLimiter(mux)))
+	pipeline := middleware.RequestLogger(logger)(middleware.EnableCORS(rateLimiter(mux)))
 
 	mux.HandleFunc("GET /users", userHandler.GetUsers)
 	mux.HandleFunc("POST /users", userHandler.CreateUser)
@@ -192,20 +182,21 @@ func main() {
 	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("Server running on http://localhost:%s\n", port)
+		logger.Info("server starting", slog.String("address", ":"+port))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("HTTP server error: %v", err)
+			logger.Error("HTTP server error", slog.Any("error", err))
+			os.Exit(1)
 		}
 	}()
 
 	sig := <-shutdownSignal
-	log.Printf("Received signal: %v. Draining active connections...", sig)
+	logger.Info("received shutdown signal; draining active connections", slog.String("signal", sig.String()))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Shutdown error: %v", err)
+		logger.Error("shutdown error", slog.Any("error", err))
 	}
-	log.Println("Server exiting cleanly")
+	logger.Info("server exiting cleanly")
 }

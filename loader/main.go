@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"ariga.io/atlas-provider-gorm/gormschema"
