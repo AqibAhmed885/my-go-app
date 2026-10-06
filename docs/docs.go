@@ -494,6 +494,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "Aqib Ahmed"
                 },
+                "role": {
+                    "type": "string",
+                    "example": "user"
+                },
                 "updated_at": {
                     "type": "string",
                     "example": "2025-01-01T00:00:00Z"

@@ -16,5 +16,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, _ = io.WriteString(os.Stdout, stmts)
+	_, _ = os.Stdout.WriteString(stmts)
 }

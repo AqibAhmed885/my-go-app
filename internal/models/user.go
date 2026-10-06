@@ -23,6 +23,7 @@ type User struct {
 	Name         string    `json:"name" example:"Aqib Ahmed" gorm:"type:text;not null"`
 	Email        string    `json:"email" example:"aqib@example.com" gorm:"type:text;not null;uniqueIndex"`
 	PasswordHash string    `json:"-" example:"$2a$10$..." gorm:"column:password_hash;type:text;not null;default:''"`
+	Role         string    `json:"role" example:"user" gorm:"type:text;not null;default:user"`
 	CreatedAt    time.Time `json:"created_at" example:"2025-01-01T00:00:00Z" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt    time.Time `json:"updated_at" example:"2025-01-01T00:00:00Z" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
 }
@@ -39,7 +40,7 @@ type UserFilters struct {
 }
 
 func (m *UserModel) GetAll(ctx context.Context) ([]User, error) {
-	rows, err := m.DB.QueryContext(ctx, "SELECT id, name, email, created_at, updated_at FROM users ORDER BY id ASC")
+	rows, err := m.DB.QueryContext(ctx, "SELECT id, name, email, role, created_at, updated_at FROM users ORDER BY id ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +49,7 @@ func (m *UserModel) GetAll(ctx context.Context) ([]User, error) {
 	users := make([]User, 0)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -58,8 +59,8 @@ func (m *UserModel) GetAll(ctx context.Context) ([]User, error) {
 
 func (m *UserModel) GetByID(ctx context.Context, id int) (*User, error) {
 	var u User
-	query := "SELECT id, name, email, created_at, updated_at FROM users WHERE id = $1"
-	err := m.DB.QueryRowContext(ctx, query, id).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	query := "SELECT id, name, email, role, created_at, updated_at FROM users WHERE id = $1"
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
@@ -70,10 +71,10 @@ func (m *UserModel) GetByID(ctx context.Context, id int) (*User, error) {
 
 func (m *UserModel) Insert(ctx context.Context, name, email string) (*User, error) {
 	var u User
-	query := `INSERT INTO users (name, email) 
+	query := `INSERT INTO users (name, email)
 	          VALUES ($1, $2) 
-	          RETURNING id, name, email, created_at, updated_at`
-	err := m.DB.QueryRowContext(ctx, query, name, email).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	          RETURNING id, name, email, role, created_at, updated_at`
+	err := m.DB.QueryRowContext(ctx, query, name, email).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -86,11 +87,11 @@ func (m *UserModel) Insert(ctx context.Context, name, email string) (*User, erro
 
 func (m *UserModel) Update(ctx context.Context, id int, name, email string) (*User, error) {
 	var u User
-	query := `UPDATE users 
+	query := `UPDATE users
 	          SET name = $1, email = $2, updated_at = CURRENT_TIMESTAMP 
 	          WHERE id = $3 
-	          RETURNING id, name, email, created_at, updated_at`
-	err := m.DB.QueryRowContext(ctx, query, name, email, id).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	          RETURNING id, name, email, role, created_at, updated_at`
+	err := m.DB.QueryRowContext(ctx, query, name, email, id).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
@@ -146,7 +147,7 @@ func (m *UserModel) List(ctx context.Context, f UserFilters) ([]User, int, error
 
 	// 2. Fetch paginated records
 	dataQuery := fmt.Sprintf(`
-		SELECT id, name, email, created_at, updated_at 
+		SELECT id, name, email, role, created_at, updated_at
 		FROM users 
 		%s 
 		ORDER BY id ASC 
@@ -163,7 +164,7 @@ func (m *UserModel) List(ctx context.Context, f UserFilters) ([]User, int, error
 	users := make([]User, 0)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		users = append(users, u)
@@ -180,12 +181,12 @@ func (m *UserModel) Register(ctx context.Context, name, email, password string) 
 	}
 
 	var u User
-	query := `INSERT INTO users (name, email, password_hash) 
+	query := `INSERT INTO users (name, email, password_hash)
 	          VALUES ($1, $2, $3) 
-	          RETURNING id, name, email, created_at, updated_at`
+	          RETURNING id, name, email, role, created_at, updated_at`
 
 	err = m.DB.QueryRowContext(ctx, query, name, email, string(hashedPassword)).
-		Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -200,9 +201,9 @@ func (m *UserModel) Register(ctx context.Context, name, email, password string) 
 // Authenticate checks user credentials
 func (m *UserModel) Authenticate(ctx context.Context, email, password string) (*User, error) {
 	var u User
-	query := `SELECT id, name, email, password_hash, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, name, email, password_hash, role, created_at, updated_at FROM users WHERE email = $1`
 	err := m.DB.QueryRowContext(ctx, query, email).
-		Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrInvalidAuth

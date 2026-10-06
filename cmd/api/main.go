@@ -159,7 +159,9 @@ func main() {
 	// Protected Routes
 	// Protected Routes
 	mux.Handle("GET /profile", authMiddleware(http.HandlerFunc(userHandler.GetProfile)))
-	mux.Handle("DELETE /users/{id}", authMiddleware(http.HandlerFunc(userHandler.DeleteUser)))
+	mux.Handle("DELETE /users/{id}", authMiddleware(
+		middleware.RequireRole("admin")(http.HandlerFunc(userHandler.DeleteUser)),
+	))
 
 	// Apply rate limiting: 5 requests/sec with burst of 10
 	rateLimiter := middleware.RateLimit(5, 10)

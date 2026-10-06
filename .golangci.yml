@@ -4,14 +4,111 @@ run:
   timeout: 5m
   tests: true
 
+output:
+  formats:
+    text:
+      path: stdout
+      print-issued-lines: true
+      print-linter-name: true
+      colors: true
+
 linters:
+  default: none
   enable:
+    # Core correctness & bugs
     - errcheck
-    - gosimple
     - govet
-    - ineffassign
     - staticcheck
+    - ineffassign
     - unused
+
+    # Security & Best Practices
+    - gosec
+    - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+    - noctx
+
+    # Code style & Maintainability
+    - revive
+    - gocritic
+    - unconvert
+    - misspell
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # Avoid micro-optimizing struct padding unless doing high-perf systems programming
+        - shadow
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      # Allow ignoring error return values for common writing/closing cases
+      exclude-functions:
+        - (*net/http.ResponseWriter).Write
+        - (net/http.ResponseWriter).Write
+        - (*github.com/redis/go-redis/v9.Client).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+
+    gosec:
+      # Scan for common security issues like SQL injection, weak crypto, etc.
+      excludes:
+        - G104 # Duplicate of errcheck
+        - G115 # Integer overflow conversion (frequently noisy with pagination query params)
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+          disabled: false
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: package-comments
+          disabled: true # Avoid forcing package doc comments on every internal package
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - whyNoLint
+        - hugeParam # Can be noisy with read-only filter structs
+
+    misspell:
+      locale: US
+
   exclusions:
     paths:
-      - docs # Excludes generated Swagger files
+      - ^docs/
+      - ^vendor/
+      - ".*\\.pb\\.go$"
+      - ".*\\.gen\\.go$"
+    rules:
+      # Relax rules for test files
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+
+      # Allow swagger init comments in main.go
+      - path: cmd/api/main\.go
+        linters:
+          - revive
+        text: "package-comments"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false

@@ -376,6 +376,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Generate JWT (valid for 24 hours)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
+		"role":    user.Role,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 
